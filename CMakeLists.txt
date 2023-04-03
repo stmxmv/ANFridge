@@ -30,7 +30,7 @@ if(APPLE)
     set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
     # append third-party lib
     if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-        #    list(APPEND CMAKE_PREFIX_PATH ${CMAKE_SOURCE_DIR}/thirdparty/osx)
+        list(APPEND CMAKE_PREFIX_PATH ${CMAKE_SOURCE_DIR}/thirdparty/macos)
     endif()
 elseif(WIN32)
     list(APPEND CMAKE_PREFIX_PATH ${CMAKE_SOURCE_DIR}/thirdparty/win32)
