@@ -6,6 +6,7 @@ add_an_library(
 
 find_package(OpenCV REQUIRED)
 find_package(JNI REQUIRED)
+
 if (NOT ${OpenCV_FOUND})
     message(FATAL_ERROR "OpenCV not found on this machine")
 endif ()

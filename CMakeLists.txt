@@ -42,6 +42,7 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 include(AN)
 
+include_directories(proto/cpp)
 include_directories(thirdparty/include)
 
 # /////////// project cmake modules

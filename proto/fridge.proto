@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.szu.refrigerator.proto.ObjectDetector";
+option java_outer_classname = "ObjectDetectorProto";
+option objc_class_prefix = "AN";
+
+package AN;
+
+service ObjectDetector {
+  rpc DetectImage(stream ImageChunk) returns (DetectResult) {}
+}
+
+message ImageChunk {
+  bytes buffer = 1;
+}
+
+message DetectResult {
+  repeated Detection detection = 1;
+}
+
+message Detection {
+  float x1 = 1;
+  float y1 = 2;
+  float x2 = 3;
+  float y2 = 4;
+  float confidence = 5;
+  int32 id = 6;
+}
