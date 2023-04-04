@@ -128,12 +128,12 @@ int main(int argc, char** argv) {
     }
     GreeterClient greeter(
             grpc::CreateChannel(target_str, grpc::InsecureChannelCredentials()));
-    std::string user("world");
-    std::string reply = greeter.SayHello(user);
+//    std::string user("world");
+//    std::string reply = greeter.SayHello(user);
 
     greeter.detect("C:\\Users\\aojoie\\Desktop\\detect\\3.jpg");
 
-    std::cout << "Greeter received: " << reply << std::endl;
+//    std::cout << "Greeter received: " << reply << std::endl;
 
     return 0;
 }
