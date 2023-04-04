@@ -25,7 +25,7 @@ message("release flag: ${CMAKE_CXX_FLAGS_RELEASE}")
 
 # /////////// platform specific settings
 set(OJOIE_USE_VULKAN TRUE)
-if(APPLE)
+if (APPLE)
     set(OJOIE_USE_VULKAN FALSE)
     set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
     # append third-party lib
@@ -34,6 +34,9 @@ if(APPLE)
     endif()
 elseif(WIN32)
     list(APPEND CMAKE_PREFIX_PATH ${CMAKE_SOURCE_DIR}/thirdparty/win32)
+
+elseif(UNIX)
+    set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 endif()
 
 # /////////// platform specific settings

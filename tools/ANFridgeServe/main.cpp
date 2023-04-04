@@ -13,6 +13,7 @@
 #include <grpcpp/health_check_service_interface.h>
 
 #include <string>
+#include <thread>
 
 
 using grpc::Server;

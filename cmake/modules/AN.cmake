@@ -4,17 +4,17 @@ set(PROJECT_DEBUG_MACRO AN_DEBUG)
 if (WIN32)
     set(CMAKE_DEBUG_POSTFIX d)
     set(CMAKE_PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/pdb")
-else()
-    set(CMAKE_DEBUG_POSTFIX )
-endif()
+else ()
+    set(CMAKE_DEBUG_POSTFIX)
+endif ()
 
 function(add_an_tool name)
     cmake_parse_arguments(ARG "WIN32" "" "" ${ARGN})
     if (ARG_WIN32 AND WIN32)
         add_executable(${name} WIN32 ${ARG_UNPARSED_ARGUMENTS})
-    else()
+    else ()
         add_executable(${name} ${ARG_UNPARSED_ARGUMENTS})
-    endif()
+    endif ()
 
     set_target_properties(${name} PROPERTIES DEBUG_POSTFIX "${CMAKE_DEBUG_POSTFIX}")
     set_target_properties(${name}
@@ -30,31 +30,43 @@ function(add_an_tool name)
                     PROPERTIES
                     INSTALL_RPATH "@executable_path;@executable_path/../lib;@executable_path/../../lib/$<CONFIG>"
                     )
-        else()
+        else ()
             set_target_properties(${name}
                     PROPERTIES
                     INSTALL_RPATH "@executable_path;@executable_path/../lib"
                     )
-        endif()
+        endif ()
 
     elseif (WIN32)
         if (ARG_WIN32)
             target_link_options(${name} PRIVATE /ENTRY:mainCRTStartup)
-        endif()
-    endif()
+        endif ()
+    elseif (UNIX)
+        if (multi_config)
+            set_target_properties(${name}
+                    PROPERTIES
+                    INSTALL_RPATH "/usr/local/lib:\$ORIGIN:\$ORIGIN/../lib:\$ORIGIN/../../lib/$<CONFIG>"
+                    )
+        else ()
+            set_target_properties(${name}
+                    PROPERTIES
+                    INSTALL_RPATH "/usr/local/lib:\$ORIGIN:\$ORIGIN/../lib"
+                    )
+        endif ()
+    endif ()
 endfunction(add_an_tool)
 
 
 function(install_an_tool name)
-    if(TARGET ${name})
+    if (TARGET ${name})
         install(TARGETS ${name}
                 LIBRARY DESTINATION bin
                 ARCHIVE DESTINATION bin
                 RUNTIME DESTINATION bin
-        )
-    else()
+                )
+    else ()
         add_custom_target(${name} ${ARGN})
-    endif()
+    endif ()
 endfunction(install_an_tool)
 
 
@@ -67,7 +79,7 @@ endfunction(install_an_tool)
 #        FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
 #     )
 function(add_an_library name)
-#    cmake_parse_arguments(ARG "NOT_INSTALL" "" "" ${ARGN})
+    #    cmake_parse_arguments(ARG "NOT_INSTALL" "" "" ${ARGN})
     add_library(${name} ${ARGN})
     set_target_properties(${name} PROPERTIES DEBUG_POSTFIX "${CMAKE_DEBUG_POSTFIX}")
     if (WIN32)
@@ -75,12 +87,12 @@ function(add_an_library name)
                 PROPERTIES
                 RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
                 )
-    else()
+    else ()
         set_target_properties(${name}
                 PROPERTIES
                 RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
                 )
-    endif()
+    endif ()
     set_target_properties(${name}
             PROPERTIES
             ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
@@ -88,17 +100,22 @@ function(add_an_library name)
             )
 
     if (APPLE)
-           set_target_properties(${name}
-                    PROPERTIES
-                    INSTALL_RPATH "@executable_path;@executable_path/../lib;@loader_path"
-           )
-    endif()
+        set_target_properties(${name}
+                PROPERTIES
+                INSTALL_RPATH "@executable_path;@executable_path/../lib;@loader_path"
+                )
+    elseif (UNIX)
+        set_target_properties(${name}
+                PROPERTIES
+                INSTALL_RPATH "/usr/local/lib:\$ORIGIN"
+                )
+    endif ()
 
 endfunction(add_an_library)
 
 
 function(install_an_library name)
-    if(TARGET ${name})
+    if (TARGET ${name})
         # may link here
         if (WIN32)
             install(TARGETS ${name} EXPORT ${name}-targets
@@ -107,27 +124,27 @@ function(install_an_library name)
                     ARCHIVE DESTINATION lib/${PROJECT_NAME}
                     RUNTIME DESTINATION bin
                     PUBLIC_HEADER DESTINATION include
-            )
-        else()
+                    )
+        else ()
             install(TARGETS ${name} EXPORT ${name}-targets
                     COMPONENT ${name}
                     LIBRARY DESTINATION lib/${PROJECT_NAME}
                     ARCHIVE DESTINATION lib/${PROJECT_NAME}
                     RUNTIME DESTINATION lib/${PROJECT_NAME}
                     PUBLIC_HEADER DESTINATION include/${name}
-            )
-        endif(WIN32)
+                    )
+        endif (WIN32)
 
         install(EXPORT ${name}-targets
                 FILE "${PROJECT_NAME}-${name}-targets.cmake"
                 NAMESPACE ${PROJECT_NAME}::
                 DESTINATION lib/cmake/${PROJECT_NAME}
                 COMPONENT ${component}
-        )
+                )
 
-    else()
+    else ()
         add_custom_target(${name} ${ARGN})
-    endif()
+    endif ()
 endfunction(install_an_library)
 
 include_directories(include)
