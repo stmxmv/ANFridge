@@ -3,4 +3,4 @@ add_an_tool(
         main.cpp
 )
 
-target_link_libraries(inference-test PRIVATE ANFridge)
+target_link_libraries(inference-test PRIVATE ANFridge PaddleOCR)

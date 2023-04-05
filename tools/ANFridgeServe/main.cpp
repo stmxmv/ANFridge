@@ -129,26 +129,34 @@ class ObjectDetectImageHandler : public Handler {
             case HandlerState_IOBreak: {
                 setState(HandlerState_willDestroy);
 
-                cv::Mat frame = cv::imdecode(imageData, cv::IMREAD_COLOR);
+                try {
+                    cv::Mat frame = cv::imdecode(imageData, cv::IMREAD_COLOR);
 
-                if (frame.empty()) {
-                    asyncReader.FinishWithError(Status(grpc::StatusCode::INVALID_ARGUMENT, "image data is empty"), this);
+                    if (frame.empty()) {
+                        asyncReader.FinishWithError(Status(grpc::StatusCode::INVALID_ARGUMENT, "image data is empty"), this);
+                        return;
+                    }
+
+                    std::vector<ANFridge::Detection> output = inference.inference(frame);
+
+                    for (const auto &d : output) {
+                        AN::Detection *detection = detectResult.add_detection();
+                        detection->set_x1(d.box.tl().x);
+                        detection->set_y1(d.box.tl().y);
+                        detection->set_x2(d.box.br().x);
+                        detection->set_y2(d.box.br().y);
+                        detection->set_confidence(d.confidence);
+                        detection->set_id(d.class_id);
+                    }
+
+                    asyncReader.Finish(detectResult, Status::OK, this);
+
+                } catch (const cv::Exception &exception) {
+                    std::cout << exception.what() << std::endl;
+                    asyncReader.FinishWithError(Status(grpc::StatusCode::INTERNAL, exception.what()), this);
                     return;
                 }
 
-                std::vector<ANFridge::Detection> output = inference.inference(frame);
-
-                for (const auto &d : output) {
-                    AN::Detection *detection = detectResult.add_detection();
-                    detection->set_x1(d.box.tl().x);
-                    detection->set_y1(d.box.tl().y);
-                    detection->set_x2(d.box.br().x);
-                    detection->set_y2(d.box.br().y);
-                    detection->set_confidence(d.confidence);
-                    detection->set_id(d.class_id);
-                }
-
-                asyncReader.Finish(detectResult, Status::OK, this);
             } break;
             case HandlerState_willDestroy:
                 GPR_ASSERT(getState() == HandlerState_willDestroy);

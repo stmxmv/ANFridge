@@ -15,7 +15,58 @@ using namespace ANFridge;
 
 constexpr int class_num = 28;
 
+
+#include <ANFridge/OCRRecognizer.hpp>
+#include <ANFridge/OCR.hpp>
+
 int main(int argc, char **argv) {
+
+    using namespace PaddleOCR;
+
+//    std::vector<cv::Mat> img_list;
+//    cv::Mat img = cv::imread(argv[1]);
+//    img_list.push_back(img);
+//
+//    std::vector<std::string> rec_texts(img_list.size());
+//    std::vector<float> rec_text_scores(img_list.size());
+//
+//    ANFridge::OCRRecognizer recognizer;
+//
+//    recognizer.loadModel("./models/rec", "./models/ppocr_keys_v1.txt");
+//
+//    recognizer.run(img_list, rec_texts, rec_text_scores);
+//
+//    for (auto &text : rec_texts) {
+//        std::cout << text << std::endl;
+//    }
+
+    ANFridge::OCR ocr("./models/det",
+                      "./models/cls",
+                      "./models/rec",
+                      "./models/ppocr_keys_v1.txt");
+
+    std::vector<cv::String> images;
+
+    for (int i = 1; i < argc; ++i) {
+        images.emplace_back(argv[i]);
+    }
+    auto now = std::chrono::steady_clock::now();
+    auto results = ocr.ocr(images);
+
+    auto end = std::chrono::steady_clock::now();
+
+    for (const auto &imageResult : results) {
+        for (const auto &text : imageResult) {
+            std::cout << text.text << std::endl;
+        }
+    }
+
+    auto duration = std::chrono::duration<float>(end - now);
+
+    std::cout << duration.count() << std::endl;
+
+    return 0;
+
     if (argc < 2) {
         return 1;
     }
