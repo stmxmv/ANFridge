@@ -61,6 +61,7 @@ if(VLD_MEM_CHECK)
 endif()
 
 add_subdirectory(thirdparty)
+add_subdirectory(proto)
 add_subdirectory(lib)
 add_subdirectory(tools)
 
