@@ -31,7 +31,12 @@ else ()
     target_link_libraries(
             PaddleOCR
             INTERFACE
-            ${PaddleOCR_DIR}/paddle/lib/paddle_inference_c.a
+            ${PaddleOCR_DIR}/paddle/lib/libpaddle_inference_c.so
+            ${PaddleOCR_DIR}/third_party/install/mkldnn/lib/libmkldnn.so.0
+            ${PaddleOCR_DIR}/third_party/install/mklml/lib/libiomp5.so
+            ${PaddleOCR_DIR}/third_party/install/mklml/lib/libmklml_intel.so
+            ${PaddleOCR_DIR}/third_party/install/onnxruntime/lib/libonnxruntime.so.1.11.1
+            ${PaddleOCR_DIR}/third_party/install/paddle2onnx/lib/libpaddle2onnx.so.1.0.0rc2
     )
 
 

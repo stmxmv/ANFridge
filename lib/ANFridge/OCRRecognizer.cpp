@@ -4,8 +4,6 @@
 
 #include "ANFridge/OCRRecognizer.hpp"
 
-#include <format>
-
 namespace ANFridge {
 
 OCRRecognizer::~OCRRecognizer() {
@@ -24,9 +22,10 @@ void OCRRecognizer::loadModel(const char *model_dir, const char *labelListPath) 
     label_list_.push_back(" ");
 
     config = PD_ConfigCreate();
+
     PD_ConfigSetModel(config,
-                      std::format("{}/inference.pdmodel", model_dir).c_str(),
-                      std::format("{}/inference.pdiparams", model_dir).c_str());
+                      (std::string(model_dir) + "/inference.pdmodel").c_str(),
+                      (std::string(model_dir) + "/inference.pdiparams").c_str());
     PD_ConfigDisableGpu(config);
 
     PD_ConfigSetCpuMathLibraryNumThreads(config, 4);

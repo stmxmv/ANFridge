@@ -17,8 +17,8 @@ OCRDetector::~OCRDetector() {
 void OCRDetector::loadModel(const char *model_dir) {
     config = PD_ConfigCreate();
     PD_ConfigSetModel(config,
-                      std::format("{}/inference.pdmodel", model_dir).c_str(),
-                      std::format("{}/inference.pdiparams", model_dir).c_str());
+                      (std::string(model_dir) + "/inference.pdmodel").c_str(),
+                      (std::string(model_dir) + "/inference.pdiparams").c_str());
     PD_ConfigDisableGpu(config);
 
     PD_ConfigSetCpuMathLibraryNumThreads(config, 4);
