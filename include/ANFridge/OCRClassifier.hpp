@@ -34,7 +34,7 @@ class OCRClassifier {
     bool is_scale_ = true;
     bool use_tensorrt_ = false;
     std::string precision_ = "fp32";
-    int cls_batch_num_ = 1;
+    int cls_batch_num_ = 20;
     // pre-process
     PaddleOCR::ClsResizeImg resize_op_;
     PaddleOCR::Normalize normalize_op_;

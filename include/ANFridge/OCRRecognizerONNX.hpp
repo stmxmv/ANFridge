@@ -1,24 +1,26 @@
 //
-// Created by aojoie on 4/5/2023.
+// Created by aojoie on 4/7/2023.
 //
 
-#ifndef ANFRIDGE_OCRRECOGNIZER_HPP
-#define ANFRIDGE_OCRRECOGNIZER_HPP
-
-#include <pd_inference_api.h>
+#ifndef ANFRIDGE_OCRRECOGNIZERONNX_HPP
+#define ANFRIDGE_OCRRECOGNIZERONNX_HPP
 #include <ANFridge/preprocess_op.h>
 #include <ANFridge/postprocess_op.h>
 
+#include <onnxruntime_cxx_api.h>
 #include <opencv2/opencv.hpp>
 
-#include <vector>
-#include <string>
 #include <span>
-
 
 namespace ANFridge {
 
-class OCRRecognizer {
+
+class OCRRecognizerONNX {
+    Ort::Session session{ nullptr };
+    Ort::SessionOptions sessionOptions;
+    std::vector<Ort::AllocatedStringPtr> inputNamesPtr;
+    std::vector<Ort::AllocatedStringPtr> outputNamesPtr;
+
     // pre-process
     PaddleOCR::CrnnResizeImg resize_op_;
     PaddleOCR:: Normalize normalize_op_;
@@ -26,9 +28,6 @@ class OCRRecognizer {
 
     // post-process
     PaddleOCR::DBPostProcessor post_processor_;
-
-    PD_Config *config{};
-    PD_Predictor *predictor{};
 
     std::vector<std::string> label_list_;
 
@@ -43,11 +42,14 @@ class OCRRecognizer {
     std::string precision_ = "fp32";
     int rec_batch_num_ = 24;
 
+    std::vector<int> _gpuIndices;
 public:
 
-    ~OCRRecognizer();
+    bool init(std::span<int> gpuIndices = {}) {
+        _gpuIndices.assign(gpuIndices.begin(), gpuIndices.end());
+        return true;
+    }
 
-    // Load Paddle inference model
     void loadModel(const char *model_dir, const char *labelListPath);
 
     void run(std::span<cv::Mat> img_list,
@@ -56,7 +58,7 @@ public:
 
 };
 
+
 }
 
-
-#endif//ANFRIDGE_OCRRECOGNIZER_HPP
+#endif//ANFRIDGE_OCRRECOGNIZERONNX_HPP

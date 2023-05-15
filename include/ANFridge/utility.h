@@ -30,6 +30,76 @@
 #include "opencv2/imgcodecs.hpp"
 #include "opencv2/imgproc.hpp"
 
+#include <onnxruntime_cxx_api.h>
+
+namespace AN {
+
+inline std::wstring to_wstring(std::string str) {
+    if (str.length() == 0)
+        return L"";
+    std::wstring wstr;
+    wstr.assign(str.begin(), str.end());
+    return wstr;
+}
+
+inline std::vector<Ort::AllocatedStringPtr> OrtSessionGetInputNames(Ort::Session *session) {
+    Ort::AllocatorWithDefaultOptions allocator;
+    const size_t numInputNodes = session->GetInputCount();
+
+    std::vector<Ort::AllocatedStringPtr> inputNamesPtr;
+    inputNamesPtr.reserve(numInputNodes);
+    std::vector<int64_t> input_node_dims;
+
+    // iterate over all input nodes
+    for (size_t i = 0; i < numInputNodes; i++) {
+        auto inputName = session->GetInputNameAllocated(i, allocator);
+        inputNamesPtr.push_back(std::move(inputName));
+        /*printf("inputName[%zu] = %s\n", i, inputName.get());
+        // print input node types
+        auto typeInfo = session->GetInputTypeInfo(i);
+        auto tensorInfo = typeInfo.GetTensorTypeAndShapeInfo();
+        ONNXTensorElementDataType type = tensorInfo.GetElementType();
+        printf("inputType[%zu] = %u\n", i, type);
+        // print input shapes/dims
+        input_node_dims = tensorInfo.GetShape();
+        printf("Input num_dims = %zu\n", input_node_dims.size());
+        for (size_t j = 0; j < input_node_dims.size(); j++) {
+            printf("Input dim[%zu] = %llu\n",j, input_node_dims[j]);
+        }*/
+    }
+    return inputNamesPtr;
+}
+
+inline std::vector<Ort::AllocatedStringPtr> OrtSessionGetOutputNames(Ort::Session *session) {
+    Ort::AllocatorWithDefaultOptions allocator;
+    const size_t numOutputNodes = session->GetOutputCount();
+
+    std::vector<Ort::AllocatedStringPtr> outputNamesPtr;
+    outputNamesPtr.reserve(numOutputNodes);
+    std::vector<int64_t> output_node_dims;
+
+    for (size_t i = 0; i < numOutputNodes; i++) {
+        auto outputName = session->GetOutputNameAllocated(i, allocator);
+        outputNamesPtr.push_back(std::move(outputName));
+        /*printf("outputName[%zu] = %s\n", i, outputName.get());
+        // print input node types
+        auto type_info = session->GetOutputTypeInfo(i);
+        auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+        ONNXTensorElementDataType type = tensor_info.GetElementType();
+        printf("outputType[%zu] = %u\n", i, type);
+        // print input shapes/dims
+        output_node_dims = tensor_info.GetShape();
+        printf("output num_dims = %zu\n", output_node_dims.size());
+        for (size_t j = 0; j < output_node_dims.size(); j++) {
+            printf("output dim[%zu] = %llu\n",j, output_node_dims[j]);
+        }*/
+    }
+    return outputNamesPtr;
+}
+
+
+}
+
 namespace PaddleOCR {
 
 struct OCRPredictResult {

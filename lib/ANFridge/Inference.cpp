@@ -109,7 +109,7 @@ std::vector<Detection> Inference::inference(const cv::Mat &input) {
             cv::Point class_id;
             double maxClassScore;
 
-            minMaxLoc(scores, 0, &maxClassScore, 0, &class_id);
+            cv::minMaxLoc(scores, 0, &maxClassScore, 0, &class_id);
 
             if (maxClassScore > modelScoreThreshold) {
                 confidences.push_back(maxClassScore);

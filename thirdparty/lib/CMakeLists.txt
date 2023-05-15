@@ -1,2 +1,3 @@
 add_subdirectory(grpc)
 add_subdirectory(PaddleOCR)
+add_subdirectory(onnxruntime)

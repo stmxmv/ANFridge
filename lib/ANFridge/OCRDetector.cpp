@@ -19,9 +19,30 @@ void OCRDetector::loadModel(const char *model_dir) {
     PD_ConfigSetModel(config,
                       (std::string(model_dir) + "/inference.pdmodel").c_str(),
                       (std::string(model_dir) + "/inference.pdiparams").c_str());
-    PD_ConfigDisableGpu(config);
 
-    PD_ConfigSetCpuMathLibraryNumThreads(config, 4);
+    PD_ConfigEnableMKLDNN(config);
+    PD_ConfigSetMkldnnCacheCapacity(config, 10);
+    PD_ConfigDisableGlogInfo(config);
+//    PD_ConfigEnableUseGpu(config, 100, 0);
+
+
+    // 通过 API 获取 GPU 信息
+    printf("Use GPU is: %s\n", PD_ConfigUseGpu(config) ? "True" : "False"); // True
+    printf("GPU deivce id is: %d\n", PD_ConfigGpuDeviceId(config));
+    printf("GPU memory size is: %d\n", PD_ConfigMemoryPoolInitSizeMb(config));
+    printf("GPU memory frac is: %f\n", PD_ConfigFractionOfGpuMemoryForPool(config));
+
+
+//    // 启用 TensorRT 进行预测加速 - FP16
+//    PD_ConfigEnableTensorRtEngine(config, 1 << 20, 1, 3,
+//                                  PD_PRECISION_HALF, FALSE, FALSE);
+
+//
+//    // 通过 API 获取 TensorRT 启用结果 - True
+//    printf("Enable TensorRT is: %s\n", PD_ConfigTensorRtEngineEnabled(config) ? "True" : "False");
+
+    PD_ConfigSetCpuMathLibraryNumThreads(config, 12);
+    PD_ConfigDeletePass(config, "conv_transpose_eltwiseadd_bn_fuse_pass");
 
     PD_ConfigSwitchIrOptim(config, true);
     PD_ConfigEnableMemoryOptim(config, true);
@@ -37,7 +58,6 @@ void OCRDetector::run(cv::Mat &img, vector<std::vector<std::vector<int>>> &boxes
     cv::Mat resize_img;
     img.copyTo(srcimg);
 
-    auto preprocess_start = std::chrono::steady_clock::now();
     this->resize_op_.Run(img, resize_img, this->limit_type_,
                          this->limit_side_len_, ratio_h, ratio_w,
                          this->use_tensorrt_);

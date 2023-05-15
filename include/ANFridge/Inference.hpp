@@ -52,6 +52,9 @@ public:
               const cv::Size &modelInputShape = {640, 640},
               bool runWithCuda = true);
 
+    /// \brief run the model
+    /// \param input the image matrix
+    /// \threadSafety can run in any thread concurrently
     std::vector<Detection> inference(const cv::Mat &input);
 
 };

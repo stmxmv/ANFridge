@@ -40,30 +40,38 @@ int main(int argc, char **argv) {
 //        std::cout << text << std::endl;
 //    }
 
-    ANFridge::OCR ocr("./models/det",
+    int gpu[] = { 0 };
+    ANFridge::OCR ocr("./models/det/det.onnx",
                       "./models/cls",
-                      "./models/rec",
+                      "./models/rec/rec.onnx",
                       "./models/ppocr_keys_v1.txt");
 
-    std::vector<cv::String> images;
+    std::vector<cv::String> imageNames;
+    std::vector<cv::Mat> images;
 
     for (int i = 1; i < argc; ++i) {
-        images.emplace_back(argv[i]);
+        imageNames.emplace_back(argv[i]);
+        images.emplace_back(cv::imread(argv[i]));
     }
-    auto now = std::chrono::steady_clock::now();
-    auto results = ocr.ocr(images);
 
-    auto end = std::chrono::steady_clock::now();
+    for (int i = 0; i < 10; ++i) {
 
-    for (const auto &imageResult : results) {
-        for (const auto &text : imageResult) {
-            std::cout << text.text << std::endl;
+        auto now = std::chrono::steady_clock::now();
+
+        auto results = ocr.ocr(images);
+
+        for (const auto &imageResult : results) {
+            for (const auto &text : imageResult) {
+                std::cout << text.text << std::endl;
+            }
         }
+
+        auto end      = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration<float>(end - now);
+
+        std::cout << "================time: " << duration.count() << std::endl;
     }
 
-    auto duration = std::chrono::duration<float>(end - now);
-
-    std::cout << duration.count() << std::endl;
 
     return 0;
 
@@ -75,49 +83,49 @@ int main(int argc, char **argv) {
 //    cv::utils::logging::setLogLevel(utils::logging::LOG_LEVEL_SILENT);
 #endif
 
-    bool runOnGPU = false;
-
-
-    Inference inf("./models/fridge.onnx", class_num, cv::Size(640, 640), runOnGPU);
-
-    std::vector<std::string> imageNames;
-    imageNames.emplace_back(argv[1]);
-
-    for (const auto &imageName : imageNames) {
-        cv::Mat frame = cv::imread(imageName);
-
-        // Inference starts here...
-        std::vector<Detection> output = inf.inference(frame);
-
-        int detections = output.size();
-        std::cout << "Number of detections:" << detections << std::endl;
-
-        for (int i = 0; i < detections; ++i) {
-            Detection detection = output[i];
-
-            cv::Rect box     = detection.box;
-            cv::Scalar color = detection.color;
-
-            // Detection box
-            cv::rectangle(frame, box, color, 2);
-
-            // Detection box text
-            std::string classString = std::to_string(detection.class_id) + ' ' + std::to_string(detection.confidence).substr(0, 4);
-            cv::Size textSize       = cv::getTextSize(classString, cv::FONT_HERSHEY_DUPLEX, 1, 2, 0);
-            cv::Rect textBox(box.x, box.y - 40, textSize.width + 10, textSize.height + 20);
-
-            cv::rectangle(frame, textBox, color, cv::FILLED);
-            cv::putText(frame, classString, cv::Point(box.x + 5, box.y - 10), cv::FONT_HERSHEY_DUPLEX, 1, cv::Scalar(0, 0, 0), 2, 0);
-        }
-        // Inference ends here...
-
-        // This is only for preview purposes
-        float scale = 0.8;
-
-        cv::namedWindow("Inference", cv::WINDOW_NORMAL);
-        cv::resize(frame, frame, cv::Size(frame.cols * scale, frame.rows * scale));
-        cv::imshow("Inference", frame);
-
-        cv::waitKey(-1);
-    }
+//    bool runOnGPU = false;
+//
+//
+//    Inference inf("./models/fridge.onnx", class_num, cv::Size(640, 640), runOnGPU);
+//
+//    std::vector<std::string> imageNames;
+//    imageNames.emplace_back(argv[1]);
+//
+//    for (const auto &imageName : imageNames) {
+//        cv::Mat frame = cv::imread(imageName);
+//
+//        // Inference starts here...
+//        std::vector<Detection> output = inf.inference(frame);
+//
+//        int detections = output.size();
+//        std::cout << "Number of detections:" << detections << std::endl;
+//
+//        for (int i = 0; i < detections; ++i) {
+//            Detection detection = output[i];
+//
+//            cv::Rect box     = detection.box;
+//            cv::Scalar color = detection.color;
+//
+//            // Detection box
+//            cv::rectangle(frame, box, color, 2);
+//
+//            // Detection box text
+//            std::string classString = std::to_string(detection.class_id) + ' ' + std::to_string(detection.confidence).substr(0, 4);
+//            cv::Size textSize       = cv::getTextSize(classString, cv::FONT_HERSHEY_DUPLEX, 1, 2, 0);
+//            cv::Rect textBox(box.x, box.y - 40, textSize.width + 10, textSize.height + 20);
+//
+//            cv::rectangle(frame, textBox, color, cv::FILLED);
+//            cv::putText(frame, classString, cv::Point(box.x + 5, box.y - 10), cv::FONT_HERSHEY_DUPLEX, 1, cv::Scalar(0, 0, 0), 2, 0);
+//        }
+//        // Inference ends here...
+//
+//        // This is only for preview purposes
+//        float scale = 0.8;
+//
+//        cv::namedWindow("Inference", cv::WINDOW_NORMAL);
+//        cv::resize(frame, frame, cv::Size(frame.cols * scale, frame.rows * scale));
+//        cv::imshow("Inference", frame);
+//
+//        cv::waitKey(-1);
+//    }
 }

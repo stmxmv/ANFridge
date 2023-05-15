@@ -12,9 +12,11 @@
 #include <ANFridge/preprocess_op.h>
 #include <ANFridge/postprocess_op.h>
 
-#include <ANFridge/OCRDetector.hpp>
-#include <ANFridge/OCRRecognizer.hpp>
-#include <ANFridge/OCRClassifier.hpp>
+//#include <ANFridge/OCRDetector.hpp>
+//#include <ANFridge/OCRRecognizer.hpp>
+//#include <ANFridge/OCRClassifier.hpp>
+#include <ANFridge/OCRDetectorONNX.hpp>
+#include <ANFridge/OCRRecognizerONNX.hpp>
 
 #include <chrono>
 #include <iomanip>
@@ -29,9 +31,11 @@
 namespace ANFridge {
 
 class OCR {
-    OCRDetector detector;
-    OCRClassifier classifier;
-    OCRRecognizer recognizer;
+    OCRDetectorONNX detector;
+//    OCRDetector detector;
+//    OCRClassifier classifier;
+    OCRRecognizerONNX recognizer;
+//    OCRRecognizer recognizer;
 
     void det(cv::Mat img, std::vector<PaddleOCR::OCRPredictResult> &ocr_results);
 
@@ -48,12 +52,13 @@ public:
     explicit OCR(const char *model_dir_det,
                  const char *model_dir_cls,
                  const char *model_dir_rec,
-                 const char *labelListPath);
+                 const char *labelListPath,
+                 std::span<int> gpuIndices = {});
 
     ~OCR();
 
     std::vector<std::vector<PaddleOCR::OCRPredictResult>>
-    ocr(std::vector<cv::String> cv_all_img_names, bool det = true,
+    ocr(std::span<cv::Mat> cv_all_img_names, bool det = true,
         bool rec = true, bool cls = true);
 
 };
