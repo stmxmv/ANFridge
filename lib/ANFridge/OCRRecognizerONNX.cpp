@@ -132,7 +132,6 @@ void OCRRecognizerONNX::run(std::span<cv::Mat> img_list, vector<std::string> &re
                     score += max_value;
                     count += 1;
                     str_res += label_list_[argmax_idx];
-                    /// TODO label list ??
                 }
                 last_index = argmax_idx;
             }

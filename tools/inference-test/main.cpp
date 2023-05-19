@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
     ANFridge::OCR ocr("./models/det/det.onnx",
                       "./models/cls",
                       "./models/rec/rec.onnx",
-                      "./models/ppocr_keys_v1.txt");
+                      "./models/ppocr_keys_v1.txt", gpu);
 
     std::vector<cv::String> imageNames;
     std::vector<cv::Mat> images;
