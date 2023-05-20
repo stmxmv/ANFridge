@@ -349,21 +349,20 @@ public:
 
     virtual bool init() override {
         if (!Super::init()) return false;
-        auto result = TextureLoader::LoadTexture("C:\\Users\\aojoie\\Desktop\\detect\\apples-1296x728-header.jpg");
-
         tex = NewObject<Texture2D>();
-
         TextureDescriptor descriptor{};
-        descriptor.width = result.getWidth();
-        descriptor.height = result.getHeight();
+        descriptor.width = 255;
+        descriptor.height = 255;
         descriptor.mipmapLevel = 1;
-        descriptor.pixelFormat = result.getPixelFormat();
+        descriptor.pixelFormat = kPixelFormatRGBA8Unorm_sRGB;
+
+        std::vector<UInt8> data(255 * 255 * 4, 255); // set a white image
 
         SamplerDescriptor samplerDescriptor = Texture::DefaultSamplerDescriptor();
         samplerDescriptor.magFilter = AN::kSamplerMinMagFilterNearest;
 
         if (!tex->init(descriptor, samplerDescriptor)) return false;
-        tex->setPixelData(result.getData());
+        tex->setPixelData(data.data());
         tex->setReadable(true);
         tex->uploadToGPU(false);
 
