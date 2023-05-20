@@ -285,6 +285,12 @@ class IMGUIDemo : public IMGUI {
 
     bool dragAndDropUpdating = false;
 
+    bool dockFirstTime = true;
+
+    static void OnToggleFullScreen(void *receiver, Message &message) {
+        gMainWindow->setFullScreen(!gMainWindow->isFullScreen());
+    }
+
     static size_t curl_write_data(void* contents, size_t size, size_t nmemb, IMGUIDemo *self) {
         size_t totalSize = size * nmemb;
         self->imageBuffer.insert(self->imageBuffer.end(), static_cast<char*>(contents), static_cast<char*>(contents) + totalSize);
@@ -330,6 +336,10 @@ class IMGUIDemo : public IMGUI {
 public:
 
     using IMGUI::IMGUI;
+
+    static void InitializeClass() {
+        GetClassStatic()->registerMessageCallback("OnToggleFullScreen", OnToggleFullScreen);
+    }
 
     void dealloc() override {
         ANLogResetCallback();
@@ -383,8 +393,8 @@ public:
     }
 
     void clampZoom() {
-        if (zoomLevel < 1.f) {
-            zoomLevel = 1.f; // Limit the minimum zoom level
+        if (zoomLevel < 0.1f) {
+            zoomLevel = 0.1f; // Limit the minimum zoom level
         }
     }
 
@@ -440,8 +450,97 @@ public:
         draw_list->AddCircleFilled(ImVec2(p.x + radius + t * (width - radius * 2.0f), p.y + radius), radius - 1.5f, IM_COL32(255, 255, 255, 255));
     }
 
+    void HelpMarker(const char* desc) {
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        {
+            ImGui::BeginTooltip();
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+            ImGui::TextUnformatted(desc);
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+        }
+    }
+
     virtual void onGUI() override {
         ImGuiIO& io = ImGui::GetIO();
+
+        {
+            ImGuiViewport *viewport = ImGui::GetMainViewport();
+            ImGui::SetNextWindowPos(viewport->WorkPos);
+            ImGui::SetNextWindowSize(viewport->WorkSize);
+            ImGui::SetNextWindowViewport(viewport->ID);
+
+            ImGuiWindowFlags host_window_flags = 0;
+            host_window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking;
+            host_window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+//            host_window_flags |= ImGuiWindowFlags_MenuBar;
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+
+            ImGui::Begin("MainDockSpaceViewport", nullptr, host_window_flags);
+            ImGui::PopStyleVar(3);
+
+            ImGuiID dockspace_id = ImGui::GetID("MainDockSpace");
+            ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f));
+
+            ImGuiDockNodeFlags dockspace_flags = 0;
+
+            if (dockFirstTime) {
+                dockFirstTime = false;
+
+                ImGui::DockBuilderRemoveNode(dockspace_id);
+                ImGui::DockBuilderAddNode(dockspace_id, dockspace_flags | ImGuiDockNodeFlags_DockSpace);
+                ImGui::DockBuilderSetNodeSize(dockspace_id, viewport->Size);
+
+                ImGuiID dock_id_up;
+                ImGuiID dock_id_down = ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Down, 0.2f, nullptr, &dock_id_up);
+
+                ImGui::DockBuilderDockWindow("Logger", dock_id_down);
+
+                ImGuiID dock_id_right;
+                ImGuiID dock_id_left = ImGui::DockBuilderSplitNode(dock_id_up, ImGuiDir_Left, 0.3f, nullptr, &dock_id_right);
+
+                ImGui::DockBuilderDockWindow("Info", dock_id_left);
+                ImGui::DockBuilderDockWindow("Main Window", dock_id_right);
+
+
+
+                ImGui::DockBuilderFinish(dockspace_id);
+            }
+            /*
+            if (ImGui::BeginMenuBar())
+            {
+                if (ImGui::BeginMenu("App"))
+                {
+                    // Disabling fullscreen would allow the window to be moved to the front of other windows,
+                    // which we can't undo at the moment without finer window depth/z control.
+
+                    if (ImGui::MenuItem("Open")) {
+
+                    }
+
+                    if (ImGui::MenuItem("Close")) {
+                        App->terminate();
+                    }
+
+                    ImGui::EndMenu();
+                }
+                HelpMarker(
+                        "When docking is enabled, you can ALWAYS dock MOST window into another! Try it now!" "\n"
+                        "- Drag from window title bar or their tab to dock/undock." "\n"
+                        "- Drag from window menu button (upper-left button) to undock an entire node (all windows)." "\n"
+                        "- Hold SHIFT to disable docking (if io.ConfigDockingWithShift == false, default)" "\n"
+                        "- Hold SHIFT to enable docking (if io.ConfigDockingWithShift == true)" "\n"
+                        "This demo app has nothing to do with enabling docking!" "\n\n"
+                        "This demo app only demonstrate the use of ImGui::DockSpace() which allows you to manually create a docking node _within_ another window." "\n\n"
+                        "Read comments in ShowExampleAppDockSpace() for more details.");
+
+                ImGui::EndMenuBar();
+            } */
+
+        }
 
         static bool show_demo_window = false;
         static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
@@ -476,7 +575,7 @@ public:
                 ImGui::OpenPopup("Zoom");
             }
             if (ImGui::BeginPopup("Zoom")) {
-                ImGui::DragFloat("Zoom", &zoomLevel, zoomLevel * 0.1f, 1.f);
+                ImGui::DragFloat("Zoom", &zoomLevel, zoomLevel * 0.1f, 0.1f);
                 clampZoom();
                 ImGui::EndPopup();
             }
@@ -951,11 +1050,13 @@ public:
 //            }
 ////            ImSpinner::demoSpinners();
 //            ImGui::End();
+
+            ImGui::End();// MainDockSpace
         }
     }
 };
 
-IMPLEMENT_AN_CLASS(IMGUIDemo)
+IMPLEMENT_AN_CLASS_HAS_INIT(IMGUIDemo)
 LOAD_AN_CLASS(IMGUIDemo)
 
 IMGUIDemo::~IMGUIDemo() {}
@@ -964,7 +1065,8 @@ IMGUIDemo::~IMGUIDemo() {}
 class AppDelegate : public AN::ApplicationDelegate {
 
     AN::RefCountedPtr<AN::Window> mainWindow;
-
+    AN::RefCountedPtr<AN::Menu> mainMenu;
+    AN::RefCountedPtr<AN::Menu> appMenu;
     AN::Size size;
 public:
 
@@ -976,6 +1078,34 @@ public:
 
         //        MessageBoxW(nullptr, L"some text", L"caption", MB_OK);
 
+        class AboutMenuDelegate : public MenuInterface {
+        public:
+            virtual void execute(const MenuItem &menuItem) override {
+//                MessageBoxW(nullptr, L"about content", L"About", MB_OK);
+                App->showAboutWindow();
+            }
+        };
+
+        class CloseMenuDelegate : public MenuInterface {
+        public:
+            virtual void execute(const MenuItem &menuItem) override {
+                App->terminate();
+            }
+        };
+        AboutMenuDelegate *about = new AboutMenuDelegate();
+        CloseMenuDelegate *close = new CloseMenuDelegate();
+
+        appMenu = ref_transfer(Menu::Alloc());
+        ANAssert(appMenu->init(AN::kMenuPopup));
+
+        appMenu->addMenuItem("About #%a", "About", about);
+        appMenu->addMenuItem("Quit #%q", "Quit", close);
+        about->release();
+        close->release();
+
+        mainMenu = ref_transfer(Menu::Alloc());
+        ANAssert(mainMenu->init(AN::kMenuTopLevel));
+        mainMenu->addSubMenu("App", appMenu.get());
 
 
         size = AN::GetScreen().getSize();
@@ -989,6 +1119,7 @@ public:
         mainWindow = AN::ref_transfer(AN::Window::Alloc());
         //        AN::Size screenSize = AN::GetDefaultScreenSize();
         mainWindow->init({0, 0, size.width * 4 / 5, size.height * 4 / 5 });
+        mainWindow->setMenu(mainMenu.get());
         mainWindow->setTitle("图片测试");
         mainWindow->center();
         mainWindow->makeKeyAndOrderFront();
@@ -1021,6 +1152,9 @@ public:
 
         InputAction &cursorAction = actionMap->addAction("CursorState", AN::kInputControlButton);
         cursorAction.addBinding(kInputKey_K);
+
+        InputAction &fullScreenAction = actionMap->addAction("ToggleFullScreen", AN::kInputControlButton);
+        fullScreenAction.addBinding(kInputKey_F);
 
         return actionMap;
     }

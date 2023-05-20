@@ -2,6 +2,7 @@ add_an_tool(
         ANFridgeGUI
         WIN32
         main.cpp
+        resources.rc
 )
 
 add_library(ojoie INTERFACE)
