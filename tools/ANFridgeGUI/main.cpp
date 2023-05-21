@@ -32,6 +32,7 @@
 #include <imgui_stdlib.h>
 
 #define IMSPINNER_DEMO
+#include <imgui_internal.h>
 #include "imspinner.h"
 #include "ctpl.h"
 #include <curl/curl.h>
@@ -89,6 +90,7 @@ static const char *class_names[] = {
     "orange"
 };
 
+
 class LoggerGUI {
     ImGuiTextBuffer     Buf;
     ImGuiTextFilter     Filter;
@@ -101,7 +103,7 @@ class LoggerGUI {
         // <-- use last item id as popup id
         if (ImGui::BeginPopupContextItem()) {
             selected = n;
-            if (ImGui::Button("Copy")) {
+            if (ImGui::MenuItem("Copy")) {
                 ImGui::CloseCurrentPopup();
                 ImGui::SetClipboardText(log);
             }
@@ -503,8 +505,6 @@ public:
 
                 ImGui::DockBuilderDockWindow("Info", dock_id_left);
                 ImGui::DockBuilderDockWindow("Main Window", dock_id_right);
-
-
 
                 ImGui::DockBuilderFinish(dockspace_id);
             }
