@@ -321,7 +321,6 @@ class IMGUIDemo : public IMGUI {
 
         threadPool.push([this, path = std::string(path)](int id) {
             auto result = TextureLoader::LoadTexture(path.c_str());
-
             Dispatch::async(Dispatch::Game, [this, result = std::move(result)] {
                 if (result.isValid()) {
                     tex->resize(result.getWidth(), result.getHeight());
@@ -361,7 +360,7 @@ public:
         std::vector<UInt8> data(255 * 255 * 4, 255); // set a white image
 
         SamplerDescriptor samplerDescriptor = Texture::DefaultSamplerDescriptor();
-        samplerDescriptor.magFilter = AN::kSamplerMinMagFilterNearest;
+        samplerDescriptor.filter = AN::kSamplerFilterNearest;
 
         if (!tex->init(descriptor, samplerDescriptor)) return false;
         tex->setPixelData(data.data());
@@ -471,6 +470,7 @@ public:
             ImGui::SetNextWindowPos(viewport->WorkPos);
             ImGui::SetNextWindowSize(viewport->WorkSize);
             ImGui::SetNextWindowViewport(viewport->ID);
+            ImGui::SetNextWindowBgAlpha(0.0f);
 
             ImGuiWindowFlags host_window_flags = 0;
             host_window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking;
@@ -479,14 +479,15 @@ public:
             ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-
             ImGui::Begin("MainDockSpaceViewport", nullptr, host_window_flags);
             ImGui::PopStyleVar(3);
 
             ImGuiID dockspace_id = ImGui::GetID("MainDockSpace");
-            ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f));
 
-            ImGuiDockNodeFlags dockspace_flags = 0;
+            ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode;
+            ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
+
+
 
             if (dockFirstTime) {
                 dockFirstTime = false;
@@ -876,7 +877,7 @@ public:
             ImVec2 imageBlockBegin = imageCursorPos + (size - imageSize) * 0.5f;
             ImGui::SetCursorPos(imageBlockBegin + imagePosition);
 
-            ImGui::Image((void *)tex->getTextureID(), imageSize);
+            ImGui::Image(tex, imageSize);
 
             if (Event::Current().getType() == AN::kDragExited) {
                 dragAndDropUpdating = false;
@@ -1075,6 +1076,9 @@ public:
 
     virtual void applicationDidFinishLaunching(AN::Application *application) override {
 
+        GetConfiguration().setObject("anti-aliasing", (AntiAliasingMethod)kAntiAliasingNone);
+        GetConfiguration().setObject("msaa-samples", 1U);
+
         //        MessageBoxW(nullptr, L"some text", L"caption", MB_OK);
 
         class AboutMenuDelegate : public MenuInterface {
@@ -1153,17 +1157,23 @@ public:
         cursorAction.addBinding(kInputKey_K);
 
         InputAction &fullScreenAction = actionMap->addAction("ToggleFullScreen", AN::kInputControlButton);
-        fullScreenAction.addBinding(kInputKey_F);
+        InputBinding &fullScreenBinding = fullScreenAction.addBinding(kInputKey_F);
+
+        ModifierTrigger *modifierTrigger = new ModifierTrigger({ kInputKeyLeftControl, kInputKeyLeftShift });
+        fullScreenBinding.addTrigger(modifierTrigger);
 
         return actionMap;
     }
 
     virtual void gameSetup(AN::Game &game) override {
-        GetConfiguration().setObject("anti-aliasing", (AntiAliasingMethod)kAntiAliasingNone);
-        GetConfiguration().setObject("msaa-samples", 1U);
+        Material::SetVectorGlobal("_GlossyEnvironmentColor", { 0.1f, 0.1f, 0.1f, 1.f });
+        Material::SetVectorGlobal("_MainLightPosition", { 10.f, 10.f, 10.f, 1.f });
+        Material::SetVectorGlobal("_MainLightColor", { 1.f, 1.f, 1.f, 1.f });
+        Material::SetIntGlobal("_MainLightLayerMask", 0x1);
+        Material::SetVectorGlobal("an_LightData", { 1.f, 1.f, 1.f, 1.f });
 
         int refleshRate = AN::GetScreen().getRefreshRate() * 2;
-        game.setMaxFrameRate(refleshRate);
+        game.setMaxFrameRate(60);
 
         //        Cursor::setState(AN::kCursorStateDisabled);
 
