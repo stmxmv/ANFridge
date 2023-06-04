@@ -2,8 +2,6 @@
 // Created by aojoie on 4/22/2023.
 //
 
-#define _GAMING_DESKTOP
-#define WINAPI_FAMILY WINAPI_FAMILY_DESKTOP_APP
 
 #define IMGUI_DEFINE_MATH_OPERATORS
 
@@ -318,7 +316,6 @@ class IMGUIDemo : public IMGUI {
 
     void loadImageFromFile(const char *path) {
         imageLoading = true;
-
         threadPool.push([this, path = std::string(path)](int id) {
             auto result = TextureLoader::LoadTexture(path.c_str());
             Dispatch::async(Dispatch::Game, [this, result = std::move(result)] {
@@ -557,6 +554,10 @@ public:
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f * GetGame().deltaTime, 1.f / GetGame().deltaTime);
 
             if (!infoText.empty()) {
+                ImGui::Separator();
+                if (ImGui::Button("Copy To Pasteboard")) {
+                    ImGui::SetClipboardText(infoText.c_str());
+                }
                 ImGui::Separator();
                 ImGui::Text("%s", infoText.c_str());
             }
@@ -1056,7 +1057,7 @@ public:
     }
 };
 
-IMPLEMENT_AN_CLASS_HAS_INIT(IMGUIDemo)
+IMPLEMENT_AN_CLASS_HAS_INIT_ONLY(IMGUIDemo)
 LOAD_AN_CLASS(IMGUIDemo)
 
 IMGUIDemo::~IMGUIDemo() {}
@@ -1197,15 +1198,7 @@ int main(int argc, const char *argv[]) {
     app.setDelegate(appDelegate);
     appDelegate->release();
 
-    try {
-        app.run();
+    app.run();
 
-    } catch (const std::exception &exception) {
-
-#ifdef _WIN32
-        MessageBoxA(nullptr, exception.what(), "Exception", MB_OK|MB_ICONERROR);
-#endif
-
-    }
     return 0;
 }
