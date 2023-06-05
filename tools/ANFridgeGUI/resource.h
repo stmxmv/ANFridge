@@ -2,6 +2,8 @@
 // Microsoft Visual C++ generated include file.
 // Used by WindowTest.rc
 //
+#define IDR_MANIFEST                    1
+#define RT_MANIFEST                     24
 #define IDC_MYICON                      2
 #define IDD_WINDOWTEST_DIALOG           102
 #define IDS_APP_TITLE                   103

@@ -41,10 +41,6 @@
 
 #include <Windows.h>
 
-/// this will make window use common control style instead of window classic style
-#pragma comment(linker,"\"/manifestdependency:type='win32' \
-name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
-processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
 using std::cout, std::endl;
 
@@ -55,6 +51,7 @@ using Microsoft::WRL::ComPtr;
 using namespace AN;
 
 AN::Window *gMainWindow;
+bool gResetToDefaultLayout = false;
 constexpr int class_num = 28;
 
 static const char *class_names[] = {
@@ -486,8 +483,9 @@ public:
 
 
 
-            if (dockFirstTime) {
+            if (dockFirstTime || gResetToDefaultLayout) {
                 dockFirstTime = false;
+                gResetToDefaultLayout = false;
 
                 ImGui::DockBuilderRemoveNode(dockspace_id);
                 ImGui::DockBuilderAddNode(dockspace_id, dockspace_flags | ImGuiDockNodeFlags_DockSpace);
@@ -791,10 +789,10 @@ public:
                     cv::Mat showFrame;
                     cv::cvtColor(frame, showFrame, cv::COLOR_BGR2RGBA);
 
-                    tex->setPixelData(showFrame.data);
-                    tex->uploadToGPU(false);
+                    Dispatch::async(Dispatch::Game, [this, info = std::move(info), showFrame] {
+                        tex->setPixelData(showFrame.data);
+                        tex->uploadToGPU(false);
 
-                    Dispatch::async(Dispatch::Game, [this, info = std::move(info)] {
                         processing = false;
                         infoText = info;
                     });
@@ -1066,8 +1064,7 @@ IMGUIDemo::~IMGUIDemo() {}
 class AppDelegate : public AN::ApplicationDelegate {
 
     AN::RefCountedPtr<AN::Window> mainWindow;
-    AN::RefCountedPtr<AN::Menu> mainMenu;
-    AN::RefCountedPtr<AN::Menu> appMenu;
+
     AN::Size size;
 public:
 
@@ -1096,10 +1093,20 @@ public:
                 App->terminate();
             }
         };
+
+        class ResetToDefaultLayoutMenuDelegate : public MenuInterface {
+        public:
+            virtual void execute(const MenuItem &menuItem) override {
+                gResetToDefaultLayout = true;
+            }
+        };
+
         AboutMenuDelegate *about = new AboutMenuDelegate();
         CloseMenuDelegate *close = new CloseMenuDelegate();
 
-        appMenu = ref_transfer(Menu::Alloc());
+        ResetToDefaultLayoutMenuDelegate *resetToDefaultLayoutMenuDelegate = new ResetToDefaultLayoutMenuDelegate();
+
+        AN::RefCountedPtr<AN::Menu> appMenu = ref_transfer(Menu::Alloc());
         ANAssert(appMenu->init(AN::kMenuPopup));
 
         appMenu->addMenuItem("About #%a", "About", about);
@@ -1107,9 +1114,16 @@ public:
         about->release();
         close->release();
 
-        mainMenu = ref_transfer(Menu::Alloc());
+
+        AN::RefCountedPtr<AN::Menu> layoutMenu = ref_transfer(Menu::Alloc());
+        layoutMenu->init(AN::kMenuPopup);
+        layoutMenu->addMenuItem("Reset To Default Layout #%d", "Reset To Default Layout", resetToDefaultLayoutMenuDelegate);
+        resetToDefaultLayoutMenuDelegate->release();
+
+        AN::RefCountedPtr<AN::Menu> mainMenu = ref_transfer(Menu::Alloc());
         ANAssert(mainMenu->init(AN::kMenuTopLevel));
         mainMenu->addSubMenu("App", appMenu.get());
+        mainMenu->addSubMenu("Layout", layoutMenu.get());
 
 
         size = AN::GetScreen().getSize();

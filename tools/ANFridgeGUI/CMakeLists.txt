@@ -3,6 +3,7 @@ add_an_tool(
         WIN32
         main.cpp
         resources.rc
+        .manifest
 )
 
 add_library(ojoie INTERFACE)
@@ -14,6 +15,11 @@ target_include_directories(
         "C:/Users/aojoie/CLionProjects/ojoie/thirdparty/imgui/include"
         "C:/Users/aojoie/CLionProjects/ojoie/thirdparty/yaml/include"
         "C:/VulkanSDK/1.3.243.0/Include"
+)
+
+set_property(
+        TARGET ANFridgeGUI PROPERTY
+        LINK_FLAGS "/MANIFESTUAC:level='requireAdministrator'"
 )
 
 if (WIN32)
