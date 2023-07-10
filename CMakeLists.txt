@@ -1,13 +1,15 @@
 cmake_minimum_required(VERSION 3.22)
-project(ANFridge VERSION 1.0)
+project(ANFridge VERSION 1.0 LANGUAGES CXX CUDA)
 
 # /////////// compiler specific settings
 if (MSVC)
     set(CMAKE_CXX_STANDARD 23)
-    add_compile_options(#[[$<$<CONFIG:Debug>:/analyze>]] /Zc:__cplusplus /await:strict /utf-8)
+    #[[$<$<CONFIG:Debug>:/analyze>]]
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus /await:strict /utf-8")
     # generate pdb file for release
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
     set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
     add_compile_definitions(NOMINMAX _UNICODE UNICODE)
     set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
 else()
@@ -61,6 +63,36 @@ if(VLD_MEM_CHECK)
         message("found vld at ${VLD_ROOT_DIR}")
     endif()
     add_compile_definitions($<$<CONFIG:Debug>:VLD_MEM_CHECK>)
+endif()
+
+
+add_library(ojoie INTERFACE)
+
+target_include_directories(
+        ojoie
+        INTERFACE
+        "C:/Users/aojoie/CLionProjects/ojoie/include"
+        "C:/Users/aojoie/CLionProjects/ojoie/thirdparty/imgui/include"
+        "C:/Users/aojoie/CLionProjects/ojoie/thirdparty/yaml/include"
+        "C:/Users/aojoie/CLionProjects/ojoie/thirdparty/include"
+)
+
+if (WIN32)
+    set(
+            OJOIE_LIBS_DEBUG
+            "C:/Users/aojoie/CLionProjects/ojoie/cmake-build-ninja/lib/Debug/ojoied.lib"
+    )
+
+    set(
+            OJOIE_LIBS
+            "C:/Users/aojoie/CLionProjects/ojoie/cmake-build-ninja/lib/Release/ojoie.lib"
+    )
+    target_link_libraries(
+            ojoie INTERFACE
+            $<$<CONFIG:Debug>:${OJOIE_LIBS_DEBUG}>
+            $<$<CONFIG:Release>:${OJOIE_LIBS}>
+            $<$<CONFIG:RelWithDebInfo>:${OJOIE_LIBS}>
+    )
 endif()
 
 add_subdirectory(thirdparty)

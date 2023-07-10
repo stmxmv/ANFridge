@@ -29,6 +29,6 @@ endif ()
 
 target_include_directories(ANFridge PUBLIC ${OpenCV_INCLUDE_DIRS} PRIVATE ${CMAKE_SOURCE_DIR}/include/ANFridge)
 
-target_link_libraries(ANFridge PUBLIC ${OpenCV_LIBS} onnxruntime)
+target_link_libraries(ANFridge PUBLIC opencv_world onnxruntime ojoie)
 
 message(${OpenCV_LIBS})

@@ -26,8 +26,20 @@
 #include <ojoie/Core/DragAndDrop.hpp>
 #include <ojoie/IMGUI/IMGUI.hpp>
 #include <ojoie/Utility/String.hpp>
+#include <ojoie/Utility/Timer.hpp>
 
 #include <imgui_stdlib.h>
+
+#include "concurrentqueue/blockingconcurrentqueue.hpp"
+
+#include <opencv2/core/utils/logger.hpp>
+
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libswscale/swscale.h>
+}
+#include "util.h"
 
 #define IMSPINNER_DEMO
 #include <imgui_internal.h>
@@ -246,6 +258,46 @@ public:
     }
 };
 
+void convertYUV420PtoRGBA(const uint8_t* yuvData, uint8_t* rgbaData, int width, int height) {
+    const uint8_t* yPlane = yuvData;
+    const uint8_t* uPlane = yuvData + width * height;
+    const uint8_t* vPlane = yuvData + width * height + (width / 2) * (height / 2);
+
+    int rgbaIndex = 0;
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int yIndex = y * width + x;
+            int uvIndex = (y / 2) * (width / 2) + (x / 2);
+
+            uint8_t yValue = yPlane[yIndex];
+            uint8_t uValue = uPlane[uvIndex];
+            uint8_t vValue = vPlane[uvIndex];
+
+            // Perform color conversion from YUV to RGBA
+            int r = yValue + 1.402 * (vValue - 128);
+            int g = yValue - 0.344136 * (uValue - 128) - 0.714136 * (vValue - 128);
+            int b = yValue + 1.772 * (uValue - 128);
+
+            // Clamp the color values to the valid range [0, 255]
+            r = std::min(std::max(r, 0), 255);
+            g = std::min(std::max(g, 0), 255);
+            b = std::min(std::max(b, 0), 255);
+
+            // Write the RGBA values to the output buffer
+            rgbaData[rgbaIndex++] = static_cast<uint8_t>(r);
+            rgbaData[rgbaIndex++] = static_cast<uint8_t>(g);
+            rgbaData[rgbaIndex++] = static_cast<uint8_t>(b);
+            rgbaData[rgbaIndex++] = 255;  // Alpha value set to 255 (opaque)
+        }
+    }
+}
+
+bool floatEqual(float a, float b) {
+    constexpr static float epsilon = 0.001f;
+    return std::abs(a - b) < epsilon;
+}
+
 class IMGUIDemo : public IMGUI {
 
     Texture2D *tex;
@@ -276,6 +328,27 @@ class IMGUIDemo : public IMGUI {
     CURL *curl;
     std::vector<UInt8> imageBuffer; // for network
 
+    struct VideoFrame {
+        bool showed;
+        double timeStamp;
+        UInt32 width, height;
+        std::vector<UInt8> imageBuffer;
+    };
+
+    bool videoPlaying = false;
+    std::atomic_bool videoPlayStop = false;
+    std::atomic_bool videoPlayPause = false;
+    std::atomic_bool videoDetectFruit = false;
+    std::atomic_int frameInQueue = 0;
+    VideoFrame displayFrame{};
+    moodycamel::BlockingConcurrentQueue<VideoFrame> frameQueue;
+    Timer videoTimer;
+    double timeStampPad = 0.0;
+    double totalTimeStamp = 0.0;
+    float percentage = 0.f;
+    float userChoosePercentage = 0.f;
+    std::atomic_bool userDidChoosePercentage{};
+
     LoggerGUI logger;
 
     bool paintMode = false;
@@ -283,6 +356,8 @@ class IMGUIDemo : public IMGUI {
     bool dragAndDropUpdating = false;
 
     bool dockFirstTime = true;
+
+    int darkModeSelected = 0;
 
     static void OnToggleFullScreen(void *receiver, Message &message) {
         gMainWindow->setFullScreen(!gMainWindow->isFullScreen());
@@ -326,6 +401,257 @@ class IMGUIDemo : public IMGUI {
         });
     }
 
+
+    void playVideo(const char *url) {
+        videoDetectFruit = false;
+        videoPlaying = true;
+        videoPlayStop = false;
+        videoPlayPause = false;
+        videoTimer.mark();
+        timeStampPad = 0;
+        displayFrame.showed = true;
+        threadPool.push([this, url = std::string(url)](int) {
+            AVFormatContext* formatContext = nullptr;
+            if (avformat_open_input(&formatContext, url.c_str(), nullptr, nullptr) != 0) {
+                // Error handling
+                AN_LOG(Error, "%s", "avformat_open_input fail");
+                return;
+            }
+
+
+            if (avformat_find_stream_info(formatContext, nullptr) < 0) {
+                // Error handling
+                avformat_close_input(&formatContext);
+
+                AN_LOG(Error, "%s", "avformat_find_stream_info fail");
+                return;
+            }
+
+            // Find the video stream
+            int videoStreamIndex = -1;
+            for (unsigned int i = 0; i < formatContext->nb_streams; i++) {
+                if (formatContext->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                    videoStreamIndex = i;
+                    break;
+                }
+            }
+
+            if (videoStreamIndex == -1) {
+                // No video stream found
+                avformat_close_input(&formatContext);
+                AN_LOG(Error, "%s", "No video stream found");
+                return;
+            }
+
+            totalTimeStamp = (double) formatContext->duration / (double)AV_TIME_BASE;
+
+            AVCodecParameters* codecParameters = formatContext->streams[videoStreamIndex]->codecpar;
+            const AVCodec* codec = avcodec_find_decoder(codecParameters->codec_id);
+            if (codec == nullptr) {
+                // Codec not found
+                avformat_close_input(&formatContext);
+                AN_LOG(Error, "%s", "Codec not found");
+                return;
+            }
+
+            AVCodecContext* codecContext = avcodec_alloc_context3(codec);
+            if (codecContext == nullptr) {
+                // Failed to allocate codec context
+                avformat_close_input(&formatContext);
+                AN_LOG(Error, "%s", "Failed to allocate codec context");
+                return;
+            }
+
+            if (avcodec_parameters_to_context(codecContext, codecParameters) < 0) {
+                // Failed to copy codec parameters to codec context
+                avcodec_free_context(&codecContext);
+                avformat_close_input(&formatContext);
+                AN_LOG(Error, "%s", "Failed to copy codec parameters to codec context");
+                return;
+            }
+
+            if (avcodec_open2(codecContext, codec, nullptr) < 0) {
+                // Failed to open codec
+                avcodec_free_context(&codecContext);
+                avformat_close_input(&formatContext);
+                AN_LOG(Error, "%s", "Failed to open codec");
+                return;
+            }
+
+
+            AVPacket packet;
+
+            AVFrame* frame = av_frame_alloc();
+            if (frame == nullptr) {
+                // Failed to allocate frame
+                avcodec_free_context(&codecContext);
+                avformat_close_input(&formatContext);
+                AN_LOG(Error, "%s", "Failed to allocate frame");
+                return;
+            }
+
+            // Create SwsContext for color conversion
+            SwsContext* swsContext = sws_getContext(codecContext->width, codecContext->height, codecContext->pix_fmt,
+                                                    codecContext->width, codecContext->height, AV_PIX_FMT_RGBA, 0,
+                                                    nullptr, nullptr, nullptr);
+            if (!swsContext) {
+                AN_LOG(Error, "%s", "Failed to create SwsContext");
+                av_frame_free(&frame);
+                avcodec_free_context(&codecContext);
+                avformat_close_input(&formatContext);
+                return;
+            }
+
+            double seekPos = 0.0;
+
+            while (av_read_frame(formatContext, &packet) >= 0) {
+                if (packet.stream_index == videoStreamIndex) {
+                    // Decode video packet
+                    int response = avcodec_send_packet(codecContext, &packet);
+                    if (response < 0) {
+                        // Error decoding packet
+                        av_packet_unref(&packet);
+                        break;
+                    }
+
+                    while (response >= 0) {
+                        response = avcodec_receive_frame(codecContext, frame);
+                        if (response == AVERROR(EAGAIN) || response == AVERROR_EOF) {
+                            // No more frames or need more packets
+                            break;
+                        }
+                        else if (response < 0) {
+                            // Error receiving frame
+                            break;
+                        }
+
+                        double frameTimestamp = static_cast<double>(frame->pts) *
+                                                av_q2d(formatContext->streams[videoStreamIndex]->time_base);
+
+                        if (frameTimestamp < seekPos) {
+                            av_frame_unref(frame);
+                            continue;
+                        }
+
+
+                        imageBuffer.resize(frame->width * frame->height * 4, 255);
+                        int rgbaStride[1] = { frame->width * 4 };
+                        uint8_t * const rgbaDest[1] = { imageBuffer.data() };
+                        sws_scale(swsContext,
+                                  frame->data, frame->linesize, 0,
+                                  frame->height,
+                                  rgbaDest, rgbaStride);
+
+                        if (videoDetectFruit) {
+                            cv::Mat rawFrame(frame->height, frame->width, CV_8UC4, imageBuffer.data());
+
+                            cv::Mat cvFrame;
+                            cv::cvtColor(rawFrame, cvFrame, cv::COLOR_RGBA2BGR);
+
+
+                            std::vector<ANFridge::Detection> output = inference->inference(cvFrame);
+                            int detections                          = output.size();
+
+                            std::string info;
+                            info.append(std::format("Number of detections: {}", detections));
+                            for (int i = 0; i < detections; ++i) {
+                                ANFridge::Detection detection = output[i];
+
+                                cv::Rect box     = detection.box;
+                                cv::Scalar color = detection.color;
+
+                                // Detection box
+                                cv::rectangle(cvFrame, box, color, 2 * cvFrame.rows / 728);
+
+                                // Detection box text
+                                std::string classString = std::to_string(detection.class_id) + ' ' + class_names[detection.class_id] + std::to_string(detection.confidence).substr(0, 4);
+
+                                classString = std::format("{} {} {:.4f}", detection.class_id, class_names[detection.class_id], detection.confidence);
+
+                                info.push_back('\n');
+                                info.append(classString);
+
+                                cv::Size textSize = cv::getTextSize(classString, cv::FONT_HERSHEY_DUPLEX, 1, 2, 0);
+                                cv::Rect textBox(box.x, box.y - 40, textSize.width + 10, textSize.height + 20);
+
+                                cv::rectangle(cvFrame, textBox, color, cv::FILLED);
+                                cv::putText(cvFrame, classString, cv::Point(box.x + 5, box.y - 10), cv::FONT_HERSHEY_DUPLEX, 1, cv::Scalar(0, 0, 0), 2, 0);
+                            }
+
+                            cv::Mat showFrame;
+                            cv::cvtColor(cvFrame, showFrame, cv::COLOR_BGR2RGBA);
+
+                            memcpy(imageBuffer.data(), showFrame.data, imageBuffer.size());
+                        }
+
+
+                        VideoFrame videoFrame{ .showed = false,
+                                              .timeStamp = frameTimestamp,
+                                              .width = (UInt32)frame->width, .height = (UInt32)frame->height,
+                                              .imageBuffer = imageBuffer };
+
+                        frameQueue.enqueue(videoFrame);
+                        ++frameInQueue;
+
+                        if (frameInQueue == 7) {
+                            frameInQueue.wait(7);
+
+                            if (videoPlayStop) {
+                                av_frame_unref(frame);
+                                av_packet_unref(&packet);
+                                while (frameQueue.try_dequeue(videoFrame)) {}
+                                goto __stop;
+                            }
+
+                        }
+
+                        if (videoPlayStop) {
+                            av_frame_unref(frame);
+                            av_packet_unref(&packet);
+                            while (frameQueue.try_dequeue(videoFrame)) {}
+                            goto __stop;
+                        }
+
+                        std::vector<UInt8>().swap(imageBuffer);
+
+
+                        // Release the frame
+                        av_frame_unref(frame);
+
+                        if (userDidChoosePercentage) {
+
+                            int64_t timestampBase = formatContext->streams[videoStreamIndex]->time_base.den;
+                            seekPos = userChoosePercentage * totalTimeStamp / 100.0;
+                            //int64_t seekTarget = av_rescale_q(seekTimestamp, { 1, 1000000 }, formatContext->streams[videoStreamIndex]->time_base);
+                            int64_t seek = av_rescale_q((int64_t)(seekPos * AV_TIME_BASE), { 1, 1000000 }, formatContext->streams[videoStreamIndex]->time_base);
+                            if (0 > avformat_seek_file(formatContext, videoStreamIndex, INT64_MIN, seek, INT64_MAX, AVSEEK_FLAG_BACKWARD)) {
+                                AN_LOG(Error, "%s", "av_seek_frame Failed");
+                            } else {
+
+                                while (frameQueue.try_dequeue(videoFrame)) {}
+                                frameInQueue = 0;
+                                avcodec_flush_buffers(codecContext);
+                                userDidChoosePercentage = false;
+                                break;
+                            }
+
+                        }
+                    }
+                }
+
+
+                // Free the packet
+                av_packet_unref(&packet);
+            }
+
+        __stop:
+            sws_freeContext(swsContext);
+            av_frame_free(&frame);
+            avcodec_free_context(&codecContext);
+            avformat_close_input(&formatContext);
+        });
+    }
+
     DECLARE_DERIVED_AN_CLASS(IMGUIDemo, IMGUI)
 
 public:
@@ -334,11 +660,21 @@ public:
 
     static void InitializeClass() {
         GetClassStatic()->registerMessageCallback("OnToggleFullScreen", OnToggleFullScreen);
+
+        AN_LOG(Info, "%s", av_version_info());
+
+        av_log_set_level(AV_LOG_ERROR);
     }
 
     void dealloc() override {
         ANLogResetCallback();
         curl_easy_cleanup(curl);
+
+        videoPlayStop = true;
+        videoPlaying = false;
+        frameInQueue = 0;
+        frameInQueue.notify_all();
+        threadPool.stop(true);
         Super::dealloc();
     }
 
@@ -363,9 +699,16 @@ public:
 
 
         /// init inference
+
+        /// we use opencv cpu on debug build
+#if AN_DEBUG
         bool runOnGPU = false;
+#else
+        bool runOnGPU = true;
+#endif
         inference = std::make_unique<ANFridge::Inference>("./models/fridge.onnx", class_num, cv::Size(640, 640), runOnGPU);
 
+        /// ocr detect seems not faster when use gpu
         int gpu[] = { 0 };
         ocr = std::make_unique<ANFridge::OCR>("./models/det/det.onnx",
                                               "./models/cls",
@@ -377,6 +720,8 @@ public:
         curl = curl_easy_init();
 
         ANLogSetCallback(ANLogCallback, &logger);
+
+        displayFrame.showed = true;
 
         return true;
     }
@@ -457,6 +802,37 @@ public:
     }
 
     virtual void onGUI() override {
+
+        if (videoPlaying && !videoPlayPause) {
+            if (!displayFrame.showed) {
+
+                if (videoTimer.peek() - displayFrame.timeStamp + timeStampPad >= 0) {
+                    tex->resize(displayFrame.width, displayFrame.height);
+                    tex->setPixelData(displayFrame.imageBuffer.data());
+                    tex->uploadToGPU(false);
+
+                    percentage = displayFrame.timeStamp * 100.f / totalTimeStamp;
+
+                    displayFrame.showed = true;
+                }
+
+            } else if (!userDidChoosePercentage) {
+
+                if (frameInQueue > 0) {
+
+                    if (frameQueue.try_dequeue(displayFrame)) {
+                        --frameInQueue;
+
+                        if (frameInQueue == 6) {
+                            frameInQueue.notify_all();
+                        }
+                    }
+                }
+            }
+        }
+
+
+
         ImGuiIO& io = ImGui::GetIO();
 
         {
@@ -551,6 +927,17 @@ public:
 
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f * GetGame().deltaTime, 1.f / GetGame().deltaTime);
 
+            static const char *items[] = { "Dark", "Light", "Auto" };
+            if (ImGui::Combo("Dark Mode", &darkModeSelected, items, std::size(items))) {
+                if (darkModeSelected == 0) {
+                    App->setDarkMode(kDarkMode);
+                } else if (darkModeSelected == 1) {
+                    App->setDarkMode(kLightMode);
+                } else {
+                    App->setDarkMode(kAutoDarkMode);
+                }
+            }
+
             if (!infoText.empty()) {
                 ImGui::Separator();
                 if (ImGui::Button("Copy To Pasteboard")) {
@@ -587,7 +974,7 @@ public:
 
             ImGui::SameLine();
 
-            if (ImGui::Button("OpenFile") && !imageLoading && !processing) {
+            if (ImGui::Button("Open File") && !imageLoading && !processing && !videoPlaying) {
                 OpenPanel *openPanel = OpenPanel::Alloc();
 
                 if (!openPanel->init()) {
@@ -612,7 +999,29 @@ public:
 
             ImGui::SameLine();
 
-            if (ImGui::Button("Open From URL") && !processing && !imageLoading) {
+            if (ImGui::Button("Open Video") && !imageLoading && !processing  && !videoPlaying) {
+                OpenPanel *openPanel = OpenPanel::Alloc();
+
+                if (!openPanel->init()) {
+                    AN_LOG(Error, "init openPannel fail");
+                } else {
+                    openPanel->setAllowOtherTypes(true);
+                    openPanel->addAllowContentExtension("Video", "mp4");
+
+                    openPanel->beginSheetModal(gMainWindow, [this](ModalResponse res, const char *path) {
+                        if (res == AN::kModalResponseOk && path) {
+                            AN_LOG(Log, "Load video %s", path);
+
+                            playVideo(path);
+                        }
+                    });
+                }
+                openPanel->release();
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Open From URL") && !processing && !imageLoading  && !videoPlaying) {
                 ImGui::OpenPopup("Open URL");
             }
 
@@ -687,7 +1096,7 @@ public:
 
             ImGui::SameLine();
 
-            if (ImGui::Button("Save As")  && !processing && !imageLoading) {
+            if (ImGui::Button("Save As")  && !processing && !imageLoading  && !videoPlaying) {
                 SavePanel *savePanel = SavePanel::Alloc();
 
                 if (!savePanel->init()) {
@@ -744,66 +1153,70 @@ public:
 
             if (ImGui::Button("Detect Fruit") && !processing && !imageLoading) {
 
-                processing = true;
-                cv::Mat frame = getTextureCVMat();
-                threadPool.push([this, frame](int id) {
+                if (videoPlaying) {
+                    videoDetectFruit = !videoDetectFruit;
+                } else {
+                    processing = true;
+                    cv::Mat frame = getTextureCVMat();
+                    threadPool.push([this, frame](int id) {
 
 
-                    if (frame.empty()) {
-                        Dispatch::async(Dispatch::Game, [this] {
+                        if (frame.empty()) {
+                            Dispatch::async(Dispatch::Game, [this] {
+                                processing = false;
+                            });
+                            return;
+                        }
+
+                        std::vector<ANFridge::Detection> output(3);
+                        output = inference->inference(frame);
+                        int detections = output.size();
+
+                        std::string info;
+                        info.append(std::format("Number of detections: {}", detections));
+                        for (int i = 0; i < detections; ++i) {
+                            ANFridge::Detection detection = output[i];
+
+                            cv::Rect box     = detection.box;
+                            cv::Scalar color = detection.color;
+
+                            // Detection box
+                            cv::rectangle(frame, box, color, 2 * frame.rows / 728);
+
+                            // Detection box text
+                            std::string classString = std::to_string(detection.class_id) + ' ' + class_names[detection.class_id]
+                                                      + std::to_string(detection.confidence).substr(0, 4);
+
+                            classString = std::format("{} {} {:.4f}", detection.class_id, class_names[detection.class_id], detection.confidence);
+
+                            info.push_back('\n');
+                            info.append(classString);
+
+                            cv::Size textSize       = cv::getTextSize(classString, cv::FONT_HERSHEY_DUPLEX, 1, 2, 0);
+                            cv::Rect textBox(box.x, box.y - 40, textSize.width + 10, textSize.height + 20);
+
+                            cv::rectangle(frame, textBox, color, cv::FILLED);
+                            cv::putText(frame, classString, cv::Point(box.x + 5, box.y - 10), cv::FONT_HERSHEY_DUPLEX, 1, cv::Scalar(0, 0, 0), 2, 0);
+                        }
+
+                        cv::Mat showFrame;
+                        cv::cvtColor(frame, showFrame, cv::COLOR_BGR2RGBA);
+
+                        Dispatch::async(Dispatch::Game, [this, info = std::move(info), showFrame] {
+                            tex->setPixelData(showFrame.data);
+                            tex->uploadToGPU(false);
+
                             processing = false;
+                            infoText = info;
                         });
-                        return;
-                    }
-
-                    std::vector<ANFridge::Detection> output = inference->inference(frame);
-                    int detections = output.size();
-
-                    std::string info;
-                    info.append(std::format("Number of detections: {}", detections));
-                    for (int i = 0; i < detections; ++i) {
-                        ANFridge::Detection detection = output[i];
-
-                        cv::Rect box     = detection.box;
-                        cv::Scalar color = detection.color;
-
-                        // Detection box
-                        cv::rectangle(frame, box, color, 2 * frame.rows / 728);
-
-                        // Detection box text
-                        std::string classString = std::to_string(detection.class_id) + ' ' + class_names[detection.class_id]
-                                                  + std::to_string(detection.confidence).substr(0, 4);
-
-                        classString = std::format("{} {} {:.4f}", detection.class_id, class_names[detection.class_id], detection.confidence);
-
-                        info.push_back('\n');
-                        info.append(classString);
-
-                        cv::Size textSize       = cv::getTextSize(classString, cv::FONT_HERSHEY_DUPLEX, 1, 2, 0);
-                        cv::Rect textBox(box.x, box.y - 40, textSize.width + 10, textSize.height + 20);
-
-                        cv::rectangle(frame, textBox, color, cv::FILLED);
-                        cv::putText(frame, classString, cv::Point(box.x + 5, box.y - 10), cv::FONT_HERSHEY_DUPLEX, 1, cv::Scalar(0, 0, 0), 2, 0);
-                    }
-
-                    cv::Mat showFrame;
-                    cv::cvtColor(frame, showFrame, cv::COLOR_BGR2RGBA);
-
-                    Dispatch::async(Dispatch::Game, [this, info = std::move(info), showFrame] {
-                        tex->setPixelData(showFrame.data);
-                        tex->uploadToGPU(false);
-
-                        processing = false;
-                        infoText = info;
                     });
-                });
 
-
+                }
             }
 
             ImGui::SameLine();
 
-            if (ImGui::Button("Detect Text") && !processing && !imageLoading) {
+            if (ImGui::Button("Detect Text") && !processing && !imageLoading && !videoPlaying) {
                 processing = true;
 
                 cv::Mat frame = getTextureCVMat();
@@ -838,9 +1251,12 @@ public:
             ImGui::SameLine();
             ImGui::Text("Paint Mode");
             ImGui::SameLine();
-            ToggleButton("Paint Mode Toggle", &paintMode);
 
-            ImGui::SameLine();
+            if (!videoPlaying) {
+                ToggleButton("Paint Mode Toggle", &paintMode);
+                ImGui::SameLine();
+            }
+
 
             if (ImGui::Button("Brush Options")) {
                 ImGui::OpenPopup("Brush Options Popup");
@@ -850,6 +1266,46 @@ public:
                 ImGui::SliderInt("Brush Radius", &brushRadius, 1, 100);
                 ImGui::ColorEdit3("Brush Color", (float *)&brushColor);
                 ImGui::EndPopup();
+            }
+
+
+
+            if (videoPlaying) {
+
+                if (ImGui::Button("Video Stop")) {
+                    videoPlayStop = true;
+                    videoPlaying = false;
+                    frameInQueue = 0;
+                    frameInQueue.notify_all();
+                }
+
+                ImGui::SameLine();
+
+                if (ImGui::Button("Video Pause")) {
+                    videoPlayPause = !videoPlayPause;
+                    if (!videoPlayPause) {
+                        videoTimer.mark();
+                        timeStampPad = displayFrame.timeStamp;
+                    }
+                }
+
+                ImGui::SameLine();
+
+                if (ImGui::SliderFloat("Percentage", &percentage, 0.f, 100.f,
+                                       (floatEqual(percentage, 0.f) || floatEqual(percentage, 100.f)) ? "%.0f" : "%.2f")) {
+                    userChoosePercentage = percentage;
+                }
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    percentage = userChoosePercentage;
+                    userDidChoosePercentage = true;
+                    double seekTimestamp = userChoosePercentage * totalTimeStamp / 100.f;
+                    videoTimer.mark();
+                    timeStampPad = seekTimestamp;
+                    displayFrame.showed = true;
+
+                    frameInQueue = 0;
+                    frameInQueue.notify_all();
+                }
             }
 
             ImVec2 size = ImGui::GetContentRegionAvail();
@@ -1067,6 +1523,9 @@ class AppDelegate : public AN::ApplicationDelegate {
 
     AN::Size size;
 public:
+    void applicationWillFinishLaunching(Application *application) override {
+        application->setDarkMode(kDarkMode);
+    }
 
     virtual bool applicationShouldTerminateAfterLastWindowClosed(AN::Application *application) override {
         return true;
@@ -1188,7 +1647,9 @@ public:
         Material::SetVectorGlobal("an_LightData", { 1.f, 1.f, 1.f, 1.f });
 
         int refleshRate = AN::GetScreen().getRefreshRate() * 2;
-        game.setMaxFrameRate(60);
+        game.setMaxFrameRate(288);
+
+        //GetQualitySettings().setVSyncCount(1);
 
         //        Cursor::setState(AN::kCursorStateDisabled);
 
